@@ -5,6 +5,12 @@ The Resourcer Pattern is a design pattern that augments ActiveRecord objects wit
 - For more about why this exists: [Purpose of Resourcer Pattern](lib/resourcer/documentation/purpose.md)
 - For full documentation: [Documentation](lib/resourcer/documentation/documentation.md)
 
+## Installation
+
+```ruby
+gem "resourcer", git: "https://github.com/dandailey/resourcer.git", tag: "v0.2.0"
+```
+
 ## Key Components
 
 ### Resourcer::ListResourcer
@@ -44,8 +50,6 @@ company_relation = Company.by_owner_account(account_id_list)
 company_list_resourcer = CompanyResourcer.new(company_relation)
 company_list_resourcer.owner_account_list.size # Queries accounts table and resources all objects
 company_list_resourcer.order_list.size # Loads all orders related to all companies
-
-Account.fetchable(account_id_list.first) # No query needed
 
 company = company_list_resourcer.list.first
 account = company.resourcer.owner_account # No query - already queried for owner_account_list.size

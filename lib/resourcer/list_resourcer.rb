@@ -32,7 +32,7 @@ class Resourcer::ListResourcer
   # - Stores unique values for each indexed field defined by index_by method in the subclass.
   # - Groups objects by their indexed field values.
   # - If an object is not already resourced, it applies the ObjectResourcer to it.
-  # - Marks all objects as pre-fetched using Fetchable.register_object for potential later use.
+  # - Marks all objects as pre-fetched using Fetchable.register_object, if the host app defines Fetchable.
   # - Updates the ListResourcer if new objects are added to an already assimilated list.
   def assimilate(list)
     list = list.is_a?(ActiveRecord::Relation) ? list.dup.to_a : [list].flatten.compact
@@ -44,7 +44,7 @@ class Resourcer::ListResourcer
       if pk.nil? || !object_id_list.include?(obj.send(pk))
         obj.apply_resourcer(self) unless obj.is_resourced?
         if pk.present?
-          ::Fetchable.register_object(obj)
+          ::Fetchable.register_object(obj) if defined?(::Fetchable)
           object_id_list << obj.send(pk)
           object_lookup[obj.send(pk)] = obj
         end
@@ -135,21 +135,23 @@ class Resourcer::ListResourcer
 
     define_method("#{association_singularized}_id_list") { send("#{association_singularized}_resourcer").object_id_list }
     define_method("#{association_singularized}_list") { send("#{association_singularized}_resourcer").object_list }
-    define_method("#{association_singularized}_lookup") { send("#{association_singularized}_resourcer").lookup }
+    define_method("#{association_singularized}_lookup") { send("#{association_singularized}_resourcer").object_lookup }
   end
 
   # Defines methods to handle belongs_to associations. Creates resourcers for the associated class.
   def self.define_belongs_to_resourcer(association, foreign_key, class_name, options = {})
-    managed_klass = class_name.constantize
-    resourcer_klass = managed_klass.resourcer_klass
     association_singularized = association.to_s.singularize
 
     index_by foreign_key
 
+    # Classes are looked up on first use, so resourcers can refer to each other.
     define_method("#{association_singularized}_resourcer") do
       instance_variable_get("@#{association_singularized}_resourcer") || instance_variable_set(
         "@#{association_singularized}_resourcer",
-        resourcer_klass.new(managed_klass.in_list(managed_klass.primary_key, unique_values_for(foreign_key)))
+        begin
+          related_klass = class_name.constantize
+          related_klass.resourcer_klass.new(related_klass.where(related_klass.primary_key => unique_values_for(foreign_key)))
+        end
       )
     end
 
@@ -165,14 +167,15 @@ class Resourcer::ListResourcer
 
   # Defines methods to handle has_many associations. Creates resourcers for the associated class.
   def self.define_has_many_resourcer(association, foreign_key, class_name, options = {})
-    managed_klass = class_name.constantize
-    resourcer_klass = managed_klass.resourcer_klass
     association_singularized = association.to_s.singularize
 
     define_method("#{association_singularized}_resourcer") do
       instance_variable_get("@#{association_singularized}_resourcer") || instance_variable_set(
         "@#{association_singularized}_resourcer",
-        resourcer_klass.new(managed_klass.in_list(foreign_key, id_list))
+        begin
+          related_klass = class_name.constantize
+          related_klass.resourcer_klass.new(related_klass.where(foreign_key => id_list))
+        end
       )
     end
 
@@ -180,7 +183,7 @@ class Resourcer::ListResourcer
       define_method(association) do
         instance_variable_get("@#{association}") || instance_variable_set(
           "@#{association}",
-          send("#{association_singularized}_resourcer").send("list_for_#{foreign_key}", primary_key)
+          send("#{association_singularized}_resourcer").grouped_object_lookup_for(foreign_key)[primary_key] || []
         )
       end
     end
