@@ -1,3 +1,5 @@
+require "active_record"
+
 require_relative "resourcer/version"
 require_relative "resourcer/application_record_extensions"
 require_relative "resourcer/list_resourcer"
